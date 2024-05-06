@@ -23,7 +23,7 @@ COPY ./package.json /app/
 RUN \
     set -ex && \
     export PUPPETEER_SKIP_DOWNLOAD=true && \
-    corepack enable pnpm && \
+    npm install -g pnpm@8.15.7 && \
     pnpm install --frozen-lockfile && \
     pnpm rb
 
@@ -84,7 +84,7 @@ FROM node:21-bookworm-slim AS chromium-downloader
 # Yeah, downloading Chromium never needs those dependencies below.
 
 WORKDIR /app
-COPY ./.puppeteerrc.js /app/
+COPY ./.puppeteerrc.cjs /app/
 COPY --from=dep-version-parser /ver/.puppeteer_version /app/.puppeteer_version
 
 ARG TARGETPLATFORM
@@ -102,7 +102,7 @@ RUN \
         fi; \
         echo 'Downloading Chromium...' && \
         unset PUPPETEER_SKIP_DOWNLOAD && \
-        corepack enable pnpm && \
+        npm install -g pnpm@8.15.7 && \
         pnpm add puppeteer@$(cat /app/.puppeteer_version) --save-prod && \
         pnpm rb ; \
     else \
@@ -146,20 +146,18 @@ RUN \
             apt-get install -yq --no-install-recommends \
                 chromium \
             && \
-            echo 'CHROMIUM_EXECUTABLE_PATH=chromium' | tee /app/.env ; \
+            echo "CHROMIUM_EXECUTABLE_PATH=$(which chromium)" | tee /app/.env ; \
         fi; \
     fi; \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=chromium-downloader /app/node_modules/.cache/puppeteer /app/node_modules/.cache/puppeteer
 
-# if grep matches nothing then it will exit with 1, thus, we cannot `set -e` here
 RUN \
-    set -x && \
+    set -ex && \
     if [ "$PUPPETEER_SKIP_DOWNLOAD" = 0 ] && [ "$TARGETPLATFORM" = 'linux/amd64' ]; then \
         echo 'Verifying Chromium installation...' && \
-        ldd $(find /app/node_modules/.cache/puppeteer/ -name chrome -type f) | grep "not found" ; \
-        if [ "$?" = 0 ]; then \
+        if ldd $(find /app/node_modules/.cache/puppeteer/ -name chrome -type f) | grep "not found"; then \
             echo "!!! Chromium has unmet shared libs !!!" && \
             exit 1 ; \
         else \
